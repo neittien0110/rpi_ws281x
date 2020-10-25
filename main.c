@@ -63,15 +63,7 @@ static char VERSION[] = "XX.YY.ZZ";
 #define STRIP_TYPE              WS2811_STRIP_GBR		// WS2812/SK6812RGB integrated chip+leds
 //#define STRIP_TYPE            SK6812_STRIP_RGBW		// SK6812RGBW (NOT SK6812RGB)
 
-#define WIDTH                   8
-#define HEIGHT                  8
-#define LED_COUNT               (WIDTH * HEIGHT)
-
-int width = WIDTH;
-int height = HEIGHT;
-int led_count = LED_COUNT;
-
-int clear_on_exit = 0;
+int led_count = 1;
 
 ws2811_t ledstring =
 {
@@ -82,129 +74,15 @@ ws2811_t ledstring =
         [0] =
         {
             .gpionum = GPIO_PIN,
-            .count = LED_COUNT,
+            .count = 1,
             .invert = 0,
             .brightness = 255,
             .strip_type = STRIP_TYPE,
         },
-        [1] =
-        {
-            .gpionum = 0,
-            .count = 0,
-            .invert = 0,
-            .brightness = 0,
-        },
     },
 };
 
-ws2811_led_t *matrix;
-
-static uint8_t running = 1;
-
-void matrix_render(void)
-{
-    int x, y;
-
-    for (x = 0; x < width; x++)
-    {
-        for (y = 0; y < height; y++)
-        {
-            ledstring.channel[0].leds[(y * width) + x] = matrix[y * width + x];
-        }
-    }
-}
-
-void matrix_raise(void)
-{
-    int x, y;
-
-    for (y = 0; y < (height - 1); y++)
-    {
-        for (x = 0; x < width; x++)
-        {
-            // This is for the 8x8 Pimoroni Unicorn-HAT where the LEDS in subsequent
-            // rows are arranged in opposite directions
-            matrix[y * width + x] = matrix[(y + 1)*width + width - x - 1];
-        }
-    }
-}
-
-void matrix_clear(void)
-{
-    int x, y;
-
-    for (y = 0; y < (height ); y++)
-    {
-        for (x = 0; x < width; x++)
-        {
-            matrix[y * width + x] = 0;
-        }
-    }
-}
-
-int dotspos[] = { 0, 1, 2, 3, 4, 5, 6, 7 };
-ws2811_led_t dotcolors[] =
-{
-    0x00200000,  // red
-    0x00201000,  // orange
-    0x00202000,  // yellow
-    0x00002000,  // green
-    0x00002020,  // lightblue
-    0x00000020,  // blue
-    0x00100010,  // purple
-    0x00200010,  // pink
-};
-
-ws2811_led_t dotcolors_rgbw[] =
-{
-    0x00200000,  // red
-    0x10200000,  // red + W
-    0x00002000,  // green
-    0x10002000,  // green + W
-    0x00000020,  // blue
-    0x10000020,  // blue + W
-    0x00101010,  // white
-    0x10101010,  // white + W
-
-};
-
-void matrix_bottom(void)
-{
-    int i;
-
-    for (i = 0; i < (int)(ARRAY_SIZE(dotspos)); i++)
-    {
-        dotspos[i]++;
-        if (dotspos[i] > (width - 1))
-        {
-            dotspos[i] = 0;
-        }
-
-        if (ledstring.channel[0].strip_type == SK6812_STRIP_RGBW) {
-            matrix[dotspos[i] + (height - 1) * width] = dotcolors_rgbw[i];
-        } else {
-            matrix[dotspos[i] + (height - 1) * width] = dotcolors[i];
-        }
-    }
-}
-
-static void ctrl_c_handler(int signum)
-{
-	(void)(signum);
-    running = 0;
-}
-
-static void setup_handlers(void)
-{
-    struct sigaction sa =
-    {
-        .sa_handler = ctrl_c_handler,
-    };
-
-    sigaction(SIGINT, &sa, NULL);
-    sigaction(SIGTERM, &sa, NULL);
-}
-
+ws2811_led_t dotcolors = 0x00102008;
 
 void parseargs(int argc, char **argv, ws2811_t *ws2811)
 {
@@ -219,8 +97,6 @@ void parseargs(int argc, char **argv, ws2811_t *ws2811)
 		{"invert", no_argument, 0, 'i'},
 		{"clear", no_argument, 0, 'c'},
 		{"strip", required_argument, 0, 's'},
-		{"height", required_argument, 0, 'y'},
-		{"width", required_argument, 0, 'x'},
 		{"version", no_argument, 0, 'v'},
 		{0, 0, 0, 0}
 	};
@@ -229,7 +105,7 @@ void parseargs(int argc, char **argv, ws2811_t *ws2811)
 	{
 
 		index = 0;
-		c = getopt_long(argc, argv, "cd:g:his:vx:y:", longopts, &index);
+		c = getopt_long(argc, argv, "cd:g:his:t:v", longopts, &index);
 
 		if (c == -1)
 			break;
@@ -245,13 +121,11 @@ void parseargs(int argc, char **argv, ws2811_t *ws2811)
 			fprintf(stderr, "Usage: %s \n"
 				"-h (--help)    - this information\n"
 				"-s (--strip)   - strip type - rgb, grb, gbr, rgbw\n"
-				"-x (--width)   - matrix width (default 8)\n"
-				"-y (--height)  - matrix height (default 8)\n"
 				"-d (--dma)     - dma channel to use (default 10)\n"
 				"-g (--gpio)    - GPIO to use\n"
 				"                 If omitted, default is 18 (PWM0)\n"
 				"-i (--invert)  - invert pin output (pulse LOW)\n"
-				"-c (--clear)   - clear matrix on exit.\n"
+				"-t (--color)   - RGB color\n"
 				"-v (--version) - version information\n"
 				, argv[0]);
 			exit(-1);
@@ -284,10 +158,6 @@ void parseargs(int argc, char **argv, ws2811_t *ws2811)
 			ws2811->channel[0].invert=1;
 			break;
 
-		case 'c':
-			clear_on_exit=1;
-			break;
-
 		case 'd':
 			if (optarg) {
 				int dma = atoi(optarg);
@@ -295,30 +165,6 @@ void parseargs(int argc, char **argv, ws2811_t *ws2811)
 					ws2811->dmanum = dma;
 				} else {
 					printf ("invalid dma %d\n", dma);
-					exit (-1);
-				}
-			}
-			break;
-
-		case 'y':
-			if (optarg) {
-				height = atoi(optarg);
-				if (height > 0) {
-					ws2811->channel[0].count = height * width;
-				} else {
-					printf ("invalid height %d\n", height);
-					exit (-1);
-				}
-			}
-			break;
-
-		case 'x':
-			if (optarg) {
-				width = atoi(optarg);
-				if (width > 0) {
-					ws2811->channel[0].count = height * width;
-				} else {
-					printf ("invalid width %d\n", width);
 					exit (-1);
 				}
 			}
@@ -356,7 +202,11 @@ void parseargs(int argc, char **argv, ws2811_t *ws2811)
 				}
 			}
 			break;
-
+		case 't':
+			if (optarg) {
+				dotcolors=strtol(optarg, NULL, 16);
+			};
+			break;
 		case 'v':
 			fprintf(stderr, "%s version %s\n", argv[0], VERSION);
 			exit(-1);
@@ -380,37 +230,15 @@ int main(int argc, char *argv[])
 
     parseargs(argc, argv, &ledstring);
 
-    matrix = malloc(sizeof(ws2811_led_t) * width * height);
-
-    setup_handlers();
-
     if ((ret = ws2811_init(&ledstring)) != WS2811_SUCCESS)
     {
         fprintf(stderr, "ws2811_init failed: %s\n", ws2811_get_return_t_str(ret));
         return ret;
     }
 
-    while (running)
-    {
-        matrix_raise();
-        matrix_bottom();
-        matrix_render();
-
-        if ((ret = ws2811_render(&ledstring)) != WS2811_SUCCESS)
-        {
-            fprintf(stderr, "ws2811_render failed: %s\n", ws2811_get_return_t_str(ret));
-            break;
-        }
-
-        // 15 frames /sec
-        usleep(1000000 / 15);
-    }
-
-    if (clear_on_exit) {
-	matrix_clear();
-	matrix_render();
-	ws2811_render(&ledstring);
-    }
+	/// Biến đại diện cho đèn led ma trận gồm nhiều channel, mỗi channel gồm n đèn led
+    ledstring.channel[0].leds[0] = dotcolors;
+    ws2811_render(&ledstring);
 
     ws2811_fini(&ledstring);
 
